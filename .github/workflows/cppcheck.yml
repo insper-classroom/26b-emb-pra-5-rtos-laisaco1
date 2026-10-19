@@ -1,0 +1,13 @@
+name: cppcheck
+
+on:
+  push:
+jobs:
+
+  Testing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: insper-embarcados/actions-cppcheck@v1
+        with:
+          c_file: main/main.c

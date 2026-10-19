@@ -1,0 +1,14 @@
+name: embedded-check
+
+on:
+  push:
+jobs:
+
+  Testing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: insper-embarcados/actions-embedded-check@v2
+        with:
+          c_file: main/main.c
+          rtos: true

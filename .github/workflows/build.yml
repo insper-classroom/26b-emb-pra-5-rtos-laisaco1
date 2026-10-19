@@ -1,0 +1,11 @@
+name: build pico
+
+on:
+  push:
+jobs:
+
+  Testing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: insper-embarcados/pico-build@v4
