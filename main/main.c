@@ -10,6 +10,7 @@
 #include "pins.h"
 #include "ssd1306.h"
 
+// Constantes:
 #define ULTRASONIC_TRIG_PIN 16
 #define ULTRASONIC_ECHO_PIN 17
 
@@ -22,21 +23,20 @@
 
 #define MAX_DISTANCE_CM 400
 
-/*
- * A fila leva o timestamp e a borda detectada pelo callback.
- * O timestamp é obtido com to_us_since_boot().
- */
+// 
 typedef struct {
     uint64_t time_us;
     bool rising_edge;
-} echo_event_t;
+}
 
-/* Variáveis globais: somente recursos do FreeRTOS. */
+echo_event_t;
+
+// Variáveis globais: somente recursos do FreeRTOS.
 static QueueHandle_t xQueueTime = NULL;
 static QueueHandle_t xQueueDistance = NULL;
 static SemaphoreHandle_t xSemaphoreTrigger = NULL;
 
-/* Callback da interrupção do pino ECHO. */
+// === ECHO: ===
 void pin_callback(uint gpio, uint32_t events) {
     if (gpio != ULTRASONIC_ECHO_PIN) {
         return;
@@ -49,22 +49,21 @@ void pin_callback(uint gpio, uint32_t events) {
 
     if (events & GPIO_IRQ_EDGE_RISE) {
         event.rising_edge = true;
-    } else if (events & GPIO_IRQ_EDGE_FALL) {
+    }
+    
+    else if (events & GPIO_IRQ_EDGE_FALL) {
         event.rising_edge = false;
-    } else {
+    }
+    
+    else { 
         return;
     }
 
-    xQueueSendFromISR(
-        xQueueTime,
-        &event,
-        &higher_priority_task_woken
-    );
-
+    xQueueSendFromISR(xQueueTime, &event, &higher_priority_task_woken);
     portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
-/* Inicializa o OLED, usando a ligação do seu exemplo nos GPIOs 2 e 3. */
+// === OLED: ===
 static void oled_display_init(ssd1306_t *display) {
     i2c_init(i2c1, 400000);
 
@@ -74,6 +73,7 @@ static void oled_display_init(ssd1306_t *display) {
     gpio_pull_up(3);
 
     display->external_vcc = false;
+
     ssd1306_init(display, OLED_WIDTH, OLED_HEIGHT, 0x3C, i2c1);
     ssd1306_clear(display);
     ssd1306_show(display);
@@ -83,7 +83,7 @@ static void oled_display_init(ssd1306_t *display) {
     gpio_put(SSD1306_PIN_LITE, 0);
 }
 
-/* Inicializa os canais do LED RGB. Neste exemplo, nível alto significa apagado. */
+// === LED RBG: ===
 static void led_rgb_init(void) {
     gpio_init(LED_PIN_R);
     gpio_set_dir(LED_PIN_R, GPIO_OUT);
@@ -116,7 +116,7 @@ static void led_set_yellow(void) {
     gpio_put(LED_PIN_B, 1);
 }
 
-/* Prepara os pinos do HC-SR04 e habilita interrupções no ECHO. */
+// === HC-SR04: ===
 static void ultrasonic_init(void) {
     gpio_init(ULTRASONIC_TRIG_PIN);
     gpio_set_dir(ULTRASONIC_TRIG_PIN, GPIO_OUT);
@@ -124,27 +124,17 @@ static void ultrasonic_init(void) {
 
     gpio_init(ULTRASONIC_ECHO_PIN);
     gpio_set_dir(ULTRASONIC_ECHO_PIN, GPIO_IN);
-    /* Não habilite pull-up no ECHO do HC-SR04. */
 
-    gpio_set_irq_enabled_with_callback(
-        ULTRASONIC_ECHO_PIN,
-        GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL,
-        true,
-        &pin_callback
-    );
+    gpio_set_irq_enabled_with_callback(ULTRASONIC_ECHO_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &pin_callback);
 }
 
-/* Gera um pulso no TRIG e avisa o OLED que uma leitura foi iniciada. */
+// === TRIGGER: ===
 static void trigger_task(void *parameters) {
     (void)parameters;
 
     while (true) {
         gpio_put(ULTRASONIC_TRIG_PIN, 1);
-
-        /*
-         * O material do laboratório libera vTaskDelay para gerar
-         * o pulso do trigger; 1 tick é tipicamente 1 ms.
-         */
+        
         vTaskDelay(pdMS_TO_TICKS(1));
 
         gpio_put(ULTRASONIC_TRIG_PIN, 0);
@@ -155,7 +145,7 @@ static void trigger_task(void *parameters) {
     }
 }
 
-/* Recebe as bordas do ECHO, calcula a distância e envia o valor em cm. */
+// Recebe as bordas do ECHO, calcula a distância e envia o valor em cm:
 static void echo_task(void *parameters) {
     (void)parameters;
 
@@ -163,10 +153,6 @@ static void echo_task(void *parameters) {
     uint64_t start_time_us = 0;
 
     while (true) {
-        /*
-         * Aguarda uma borda de subida. Bordas de descida que sobrarem
-         * de uma leitura anterior são ignoradas.
-         */
         if (xQueueReceive(xQueueTime, &event, portMAX_DELAY) != pdTRUE) {
             continue;
         }
@@ -177,35 +163,21 @@ static void echo_task(void *parameters) {
 
         start_time_us = event.time_us;
 
-        /*
-         * Depois da subida, aguarda a descida do ECHO.
-         * Uma leitura inválida não envia distância; o oled_task detecta
-         * isso pelo timeout de xQueueDistance.
-         */
         while (true) {
-            if (xQueueReceive(
-                    xQueueTime,
-                    &event,
-                    pdMS_TO_TICKS(ECHO_TIMEOUT_MS)
-                ) != pdTRUE) {
+            if (xQueueReceive(xQueueTime, &event, pdMS_TO_TICKS(ECHO_TIMEOUT_MS)) != pdTRUE) {
                 break;
             }
 
             if (event.rising_edge) {
-                /* Se aparecer outra subida, ela passa a ser o início. */
                 start_time_us = event.time_us;
                 continue;
             }
 
             if (event.time_us > start_time_us) {
                 uint64_t duration_us = event.time_us - start_time_us;
-                uint32_t distance_cm = (uint32_t)(duration_us / 58);
+                uint32_t distance_cm = (uint32_t)(duration_us / 58); // distancia
 
                 if (distance_cm <= MAX_DISTANCE_CM) {
-                    /*
-                     * A fila tem comprimento 1: cada nova leitura
-                     * substitui qualquer valor antigo ainda não lido.
-                     */
                     xQueueOverwrite(xQueueDistance, &distance_cm);
                 }
             }
@@ -213,9 +185,10 @@ static void echo_task(void *parameters) {
             break;
         }
     }
+    // acaba aqui;
 }
 
-/* Mostra distância ou falha no OLED e atualiza o LED RGB. */
+// Mostra distância ou falha no OLED e atualiza o LED RGB:
 static void oled_task(void *parameters) {
     (void)parameters;
 
@@ -228,45 +201,25 @@ static void oled_task(void *parameters) {
     while (true) {
         uint32_t distance_cm = 0;
 
-        /* Espera o sinal de que o trigger iniciou uma nova leitura. */
         if (xSemaphoreTake(xSemaphoreTrigger, portMAX_DELAY) != pdTRUE) {
             continue;
         }
 
         ssd1306_clear(&display);
 
-        /*
-         * Se a distância não chegar no prazo, considera falha no sensor.
-         */
-        if (xQueueReceive(
-                xQueueDistance,
-                &distance_cm,
-                pdMS_TO_TICKS(DISPLAY_TIMEOUT_MS)
-            ) == pdTRUE) {
-            snprintf(
-                distance_text,
-                sizeof(distance_text),
-                "%lu cm",
-                (unsigned long)distance_cm
-            );
+        if (xQueueReceive(xQueueDistance, &distance_cm, pdMS_TO_TICKS(DISPLAY_TIMEOUT_MS)) == pdTRUE) {
+            snprintf(distance_text, sizeof(distance_text), "%lu cm", (unsigned long)distance_cm);
 
             ssd1306_draw_string(&display, 0, 0, 1, "DISTANCIA:");
             ssd1306_draw_string(&display, 0, 10, 1, distance_text);
 
-            /* Barra de 0 a 400 cm; a largura máxima é 118 pixels. */
-            uint32_t bar_width =
-                (distance_cm * 116) / MAX_DISTANCE_CM;
+            // Barra de 0 a 400 cm; a largura máxima é 118 pixels:
+            uint32_t bar_width = (distance_cm * 116) / MAX_DISTANCE_CM;
 
             ssd1306_draw_empty_square(&display, 5, 22, 118, 8);
 
             if (bar_width > 0) {
-                ssd1306_draw_square(
-                    &display,
-                    6,
-                    23,
-                    bar_width,
-                    6
-                );
+                ssd1306_draw_square(&display, 6, 23, bar_width, 6);
             }
 
             if (distance_cm <= 100) {
@@ -274,11 +227,15 @@ static void oled_task(void *parameters) {
             } else {
                 led_set_yellow();
             }
-        } else {
+        } 
+        
+        else {
+
             ssd1306_draw_string(&display, 0, 0, 1, "FALHA NO SENSOR");
             ssd1306_draw_string(&display, 0, 12, 1, "Verifique o ECHO");
 
-            led_set_red();
+            led_set_red(); // coloca o vermelho
+
         }
 
         ssd1306_show(&display);
@@ -292,27 +249,27 @@ int main(void) {
     xQueueDistance = xQueueCreate(1, sizeof(uint32_t));
     xSemaphoreTrigger = xSemaphoreCreateBinary();
 
-    if (xQueueTime == NULL ||
-        xQueueDistance == NULL ||
-        xSemaphoreTrigger == NULL) {
+    if (xQueueTime == NULL || xQueueDistance == NULL || xSemaphoreTrigger == NULL) {
         while (true) {
-            tight_loop_contents();
+            //tight_loop_contents();
         }
     }
 
     ultrasonic_init();
 
-    if (xTaskCreate(trigger_task, "trigger_task", 512, NULL, 2, NULL) != pdPASS ||
-        xTaskCreate(echo_task, "echo_task", 768, NULL, 2, NULL) != pdPASS ||
-        xTaskCreate(oled_task, "oled_task", 1024, NULL, 1, NULL) != pdPASS) {
+    if ( xTaskCreate(trigger_task, "trigger_task", 512, NULL, 2, NULL) != pdPASS ||
+         xTaskCreate(echo_task, "echo_task", 768, NULL, 2, NULL) != pdPASS ||
+         xTaskCreate(oled_task, "oled_task", 1024, NULL, 1, NULL) != pdPASS ) {
+
         while (true) {
-            tight_loop_contents();
+            //tight_loop_contents();
         }
+
     }
 
     vTaskStartScheduler();
 
     while (true) {
-        tight_loop_contents();
+        //tight_loop_contents();
     }
 }
