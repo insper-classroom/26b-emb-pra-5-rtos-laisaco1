@@ -10,11 +10,6 @@
 #include "pins.h"
 #include "ssd1306.h"
 
-/*
- * Troque estes GPIOs se você conectou o sensor em outros pinos.
- * GPIO 16 e 17 não são usados pelo OLED, pelos botões ou pelo LED RGB
- * da PicoDock descritos no guia.
- */
 #define ULTRASONIC_TRIG_PIN 16
 #define ULTRASONIC_ECHO_PIN 17
 
