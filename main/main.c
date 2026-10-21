@@ -135,7 +135,8 @@ static void trigger_task(void *parameters) {
     while (true) {
         gpio_put(ULTRASONIC_TRIG_PIN, 1);
         
-        vTaskDelay(pdMS_TO_TICKS(1));
+        //vTaskDelay(pdMS_TO_TICKS(1));
+        busy_wait_us(10);
 
         gpio_put(ULTRASONIC_TRIG_PIN, 0);
 
