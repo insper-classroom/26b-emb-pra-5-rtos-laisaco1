@@ -2,14 +2,15 @@
 #define FREERTOS_CONFIG_H
 
 /* Use Pico SDK ISR handlers */
-#define vPortSVCHandler         isr_svcall
-#define xPortPendSVHandler      isr_pendsv
-#define xPortSysTickHandler     isr_systick
+#define SVC_Handler             isr_svcall
+#define PendSV_Handler          isr_pendsv
+#define SysTick_Handler         isr_systick
 
+#define configENABLE_FPU 0
 #define configUSE_PREEMPTION                    1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
 #define configUSE_TICKLESS_IDLE                 0
-#define configCPU_CLOCK_HZ                      133000000
+#define configCPU_CLOCK_HZ                      150000000
 #define configTICK_RATE_HZ                      100
 #define configMAX_PRIORITIES                    5
 #define configMINIMAL_STACK_SIZE                128
@@ -38,8 +39,8 @@
 /* Hook function related definitions. */
 #define configUSE_IDLE_HOOK                     0
 #define configUSE_TICK_HOOK                     0
-#define configCHECK_FOR_STACK_OVERFLOW          0 //  AAAAAAAAA
-#define configUSE_MALLOC_FAILED_HOOK            0 //  AAAAAAAAA
+#define configCHECK_FOR_STACK_OVERFLOW          2 //  AAAAAAAAA
+#define configUSE_MALLOC_FAILED_HOOK            1 //  AAAAAAAAA
 #define configUSE_DAEMON_TASK_STARTUP_HOOK      0
 
 /* Run time and task stats gathering related definitions. */
@@ -58,7 +59,7 @@
 #define configTIMER_TASK_STACK_DEPTH            configMINIMAL_STACK_SIZE
 
 /* Define to trap errors during development. */
-#define configASSERT( x )
+#define configASSERT( x )  if( ( x ) == 0 ) { portDISABLE_INTERRUPTS(); for( ;; ); }
 
 /* Optional functions - most linkers will remove unused functions anyway. */
 #define INCLUDE_vTaskPrioritySet                1
@@ -80,5 +81,9 @@
 #define INCLUDE_xTaskResumeFromISR              1
 
 /* A header file that defines trace macro can be included here. */
+#define configENABLE_MPU                       0
+#define configENABLE_TRUSTZONE                 0
+#define configRUN_FREERTOS_SECURE_ONLY          1
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY   16
 
 #endif /* FREERTOS_CONFIG_H */
