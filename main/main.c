@@ -135,7 +135,7 @@ static void trigger_task(void *parameters) {
         xQueueReset(xQueueDistance);
 
         gpio_put(ULTRASONIC_TRIG_PIN, 1);
-        busy_wait_us(10); // Pulso de 10 microssegundos para o HC-SR04
+        vTaskDelay(pdMS_TO_TICKS(TRIGGER_PERIOD_MS));
         gpio_put(ULTRASONIC_TRIG_PIN, 0);
 
         xSemaphoreGive(xSemaphoreTrigger);
