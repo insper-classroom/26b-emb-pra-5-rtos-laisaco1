@@ -17,8 +17,9 @@
 #define OLED_WIDTH 128
 #define OLED_HEIGHT 32
 
+#define TRIGGER_PULSE_MS 1
 #define TRIGGER_PERIOD_MS 100
-#define ECHO_TIMEOUT_MS 40
+#define ECHO_TIMEOUT_MS 50
 #define DISPLAY_TIMEOUT_MS 60
 
 #define MAX_DISTANCE_CM 400
@@ -117,6 +118,8 @@ static void ultrasonic_init(void) {
 
     gpio_init(ULTRASONIC_ECHO_PIN);
     gpio_set_dir(ULTRASONIC_ECHO_PIN, GPIO_IN);
+    // Evita bordas falsas se o sensor for desconectado (pino flutuando).
+    gpio_pull_down(ULTRASONIC_ECHO_PIN);
 
     gpio_set_irq_enabled_with_callback(
         ULTRASONIC_ECHO_PIN,
@@ -135,7 +138,7 @@ static void trigger_task(void *parameters) {
         xQueueReset(xQueueDistance);
 
         gpio_put(ULTRASONIC_TRIG_PIN, 1);
-        vTaskDelay(pdMS_TO_TICKS(TRIGGER_PERIOD_MS));
+        vTaskDelay(pdMS_TO_TICKS(TRIGGER_PULSE_MS));
         gpio_put(ULTRASONIC_TRIG_PIN, 0);
 
         xSemaphoreGive(xSemaphoreTrigger);
@@ -145,6 +148,7 @@ static void trigger_task(void *parameters) {
 }
 
 // Recebe as bordas do ECHO, calcula a distância e envia o valor em cm.
+// Valores acima de MAX_DISTANCE_CM também são enviados (nada à frente).
 static void echo_task(void *parameters) {
     (void)parameters;
 
@@ -180,9 +184,7 @@ static void echo_task(void *parameters) {
                 uint64_t duration_us = event.time_us - start_time_us;
                 uint32_t distance_cm = (uint32_t)(duration_us / 58);
 
-                if (distance_cm <= MAX_DISTANCE_CM) {
-                    xQueueOverwrite(xQueueDistance, &distance_cm);
-                }
+                xQueueOverwrite(xQueueDistance, &distance_cm);
             }
 
             break;
@@ -214,12 +216,23 @@ static void oled_task(void *parameters) {
                 &distance_cm,
                 pdMS_TO_TICKS(DISPLAY_TIMEOUT_MS)
             ) == pdTRUE) {
-            snprintf(
-                distance_text,
-                sizeof(distance_text),
-                "%lu cm",
-                (unsigned long)distance_cm
-            );
+            if (distance_cm > MAX_DISTANCE_CM) {
+                // Nada à frente do sensor: fora de alcance, não é falha.
+                snprintf(
+                    distance_text,
+                    sizeof(distance_text),
+                    "> %d cm",
+                    MAX_DISTANCE_CM
+                );
+                distance_cm = MAX_DISTANCE_CM;
+            } else {
+                snprintf(
+                    distance_text,
+                    sizeof(distance_text),
+                    "%lu cm",
+                    (unsigned long)distance_cm
+                );
+            }
 
             ssd1306_draw_string(&display, 0, 0, 1, "DISTANCIA:");
             ssd1306_draw_string(&display, 0, 10, 1, distance_text);
@@ -239,6 +252,7 @@ static void oled_task(void *parameters) {
                 led_set_yellow();
             }
         } else {
+            // Nenhuma borda no ECHO dentro do tempo: sensor desconectado.
             ssd1306_draw_string(&display, 0, 0, 1, "FALHA NO SENSOR");
             ssd1306_draw_string(&display, 0, 12, 1, "Verifique o ECHO");
 
